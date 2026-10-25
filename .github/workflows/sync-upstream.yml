@@ -1,0 +1,54 @@
+name: Sync LunarisDolby from Upstream
+
+on:
+  schedule:
+    - cron: '0 0 * * 1' # Runs every Monday at 00:00 UTC
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: 16
+
+      - name: Sync LunarisDolby from upstream
+        id: sync_step
+        run: |
+          UPSTREAM_REPO="https://github.com/Pong-Development/hardware_dolby.git"
+          UPSTREAM_BRANCH="16"
+
+          echo "Cloning upstream $UPSTREAM_REPO (branch: $UPSTREAM_BRANCH)..."
+          git clone --depth 1 -b "$UPSTREAM_BRANCH" "$UPSTREAM_REPO" upstream_dir
+
+          UPSTREAM_COMMIT=$(git -C upstream_dir rev-parse --short HEAD)
+          echo "Upstream HEAD commit: $UPSTREAM_COMMIT"
+
+          echo "Syncing LunarisDolby directory..."
+          rm -rf LunarisDolby
+          cp -r upstream_dir/LunarisDolby .
+          rm -rf upstream_dir
+
+          # Check if there are changes
+          if [ -n "$(git status --porcelain LunarisDolby)" ]; then
+            echo "Changes detected in LunarisDolby."
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "commit_hash=$UPSTREAM_COMMIT" >> $GITHUB_OUTPUT
+          else
+            echo "No changes found. LunarisDolby is up to date."
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        if: steps.sync_step.outputs.has_changes == 'true'
+        run: |
+          git config user.name "Nighty"
+          git config user.email "ty.khalifa122@gmail.com"
+          git add LunarisDolby/
+          git commit -m "DolbyUI: Update LunarisDolby from upstream" -m "Synced from Pong-Development/hardware_dolby (branch 16, commit ${{ steps.sync_step.outputs.commit_hash }})"
+          git push origin 16
